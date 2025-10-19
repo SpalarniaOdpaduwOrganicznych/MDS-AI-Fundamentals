@@ -219,9 +219,6 @@ class HumanPlayer(Player):
     def move_manual(self, x: int):
         self.move(x)
 
-
-
-
 import numpy as np
 
 class FuzzyPlayer(Player):
