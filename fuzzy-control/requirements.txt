@@ -1,0 +1,6 @@
+networkx==3.5
+numpy==2.3.4
+packaging==25.0
+pygame==2.6.1
+scikit-fuzzy==0.5.0
+scipy==1.16.2
