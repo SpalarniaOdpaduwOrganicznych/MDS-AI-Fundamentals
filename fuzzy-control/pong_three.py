@@ -3,7 +3,9 @@
 import pygame
 from typing import Type
 import skfuzzy as fuzz
-import skfuzzy.control as fuzzcontrol
+import numpy as np
+import skfuzzy as fuzz
+import skfuzzy.control as ctrl
 
 FPS = 60  # TO DO FIX ME CHANGE ME TO 30
 TIME_SCALE = 1.5 # TO DO FIX ME DELETE ME
@@ -217,94 +219,89 @@ class HumanPlayer(Player):
     def move_manual(self, x: int):
         self.move(x)
 
-import numpy as np
 
-class FuzzyPlayer(Player):
+class MamdaniPlayer(Player):
+
     def __init__(self, racket: Racket, ball: Ball, board: Board):
-        super(FuzzyPlayer, self).__init__(racket, ball, board)
+        super(MamdaniPlayer, self).__init__(racket, ball, board)
 
         W = self.board.surface.get_width()
         H = self.board.surface.get_height()
+        vmax = float(self.racket.max_speed)
+
+        # Universes
         self.x_universe = np.linspace(-W/2, W/2, 1001)
         self.y_universe = np.linspace(0, H, 1001)
+        self.v_universe = np.linspace(-vmax, vmax, 801)
 
-        span = W/2
-        s = span/6
-        self.x_mf = {
-            "NL": fuzz.trapmf(self.x_universe, [-span, -span, -2.5*s, -1.5*s]),
-            "NS": fuzz.trimf(self.x_universe, [-2*s, -s, 0]),
-            "Z" : fuzz.trimf(self.x_universe, [-s, 0, s]),
-            "PS": fuzz.trimf(self.x_universe, [0, s, 2*s]),
-            "PL": fuzz.trapmf(self.x_universe, [1.5*s, 2.5*s, span, span]),
-        }
-        y_near = H/6
+        # Antecedents
+        self.xdiff = ctrl.Antecedent(self.x_universe, 'xdiff')
+        self.ydist = ctrl.Antecedent(self.y_universe, 'ydist')  # |y_diff|
+
+        # Consequent
+        self.vout  = ctrl.Consequent(self.v_universe, 'vout')
+
+        # x_diff membership (5 sets)
+        s = W/10
+        self.xdiff['NL'] = fuzz.trapmf(self.x_universe, [-W/2, -W/2, -3*s, -1.5*s])  # ball far RIGHT
+        self.xdiff['NS'] = fuzz.trimf(self.x_universe, [-2*s, -s, 0])
+        self.xdiff['Z']  = fuzz.trimf(self.x_universe, [-s*0.6, 0, s*0.6])
+        self.xdiff['PS'] = fuzz.trimf(self.x_universe, [0, s, 2*s])
+        self.xdiff['PL'] = fuzz.trapmf(self.x_universe, [1.5*s, 3*s, W/2, W/2])
+
+        # y distance (near vs far)
+        y_near = H/5
         y_mid  = H/3
-        self.y_mf = {
-            "near": fuzz.trapmf(self.y_universe, [0, 0, y_near, y_mid]),
-            "mid" : fuzz.trimf(self.y_universe, [y_near/2, y_mid, y_mid*1.5]),
-            "far" : fuzz.trapmf(self.y_universe, [y_mid, y_mid*1.5, H, H]),
-        }
-        self.edge_offset = int(self.racket.width * 0.40)
+        self.ydist['near'] = fuzz.trapmf(self.y_universe, [0, 0, y_near, y_mid])
+        self.ydist['far']  = fuzz.trapmf(self.y_universe, [y_mid, H*0.75, H, H])
 
-        self.k_follow = 0.85
-        self.k_edge   = 1.10
-        self.k_large  = 1.25
-        self.eps = 1e-6
+        # Output velocity fuzzy sets (Mamdani consequents)
+        # Negative = LEFT, Positive = RIGHT
+        # Fast left/right are near the extremes; slow ones are mid; stop around 0.
+        self.vout['FAST_LEFT']  = fuzz.trapmf(self.v_universe, [-vmax, -vmax, -0.85*vmax, -0.55*vmax])
+        self.vout['SLOW_LEFT']  = fuzz.trimf(self.v_universe,  [-0.65*vmax, -0.40*vmax, -0.15*vmax])
+        self.vout['STOP']       = fuzz.trimf(self.v_universe,  [-0.10*vmax, 0.0, 0.10*vmax])
+        self.vout['SLOW_RIGHT'] = fuzz.trimf(self.v_universe,  [ 0.15*vmax,  0.40*vmax,  0.65*vmax])
+        self.vout['FAST_RIGHT'] = fuzz.trapmf(self.v_universe, [ 0.55*vmax,  0.85*vmax,  vmax,      vmax])
 
-    def _mf_degree(self, mfs: dict, universe: np.ndarray, x: float) -> dict:
-        return {name: fuzz.interp_membership(universe, mf, x) for name, mf in mfs.items()}
+        # --- Rulebase (min for AND, max for OR; centroid defuzz) ---
+        rules = []
+        # Strong moves only when near (so we don’t overreact early)
+        rules.append(ctrl.Rule(self.xdiff['PL'] & self.ydist['near'], self.vout['FAST_LEFT']))
+        rules.append(ctrl.Rule(self.xdiff['NL'] & self.ydist['near'], self.vout['FAST_RIGHT']))
+        # When far, be gentler
+        rules.append(ctrl.Rule(self.xdiff['PL'] & self.ydist['far'],  self.vout['SLOW_LEFT']))
+        rules.append(ctrl.Rule(self.xdiff['NL'] & self.ydist['far'],  self.vout['SLOW_RIGHT']))
+        # Middle bands independent of y
+        rules.append(ctrl.Rule(self.xdiff['PS'], self.vout['SLOW_LEFT']))
+        rules.append(ctrl.Rule(self.xdiff['NS'], self.vout['SLOW_RIGHT']))
+        rules.append(ctrl.Rule(self.xdiff['Z'],  self.vout['STOP']))
 
-    def _saturate(self, v: float) -> float:
-        vmax = self.racket.max_speed
-        if v >  vmax: return vmax
-        if v < -vmax: return -vmax
-        return v
+        self.system = ctrl.ControlSystem(rules)
+        # Reuse one simulation object each frame (faster than recreating)
+        self.sim = ctrl.ControlSystemSimulation(self.system, flush_after_run=50)
 
     def make_decision(self, x_diff: int, y_diff: int) -> int:
-        abs_y = abs(y_diff)
+        # Inputs each frame
+        self.sim.input['xdiff'] = float(x_diff)
+        self.sim.input['ydist'] = float(abs(y_diff))
 
-        approaching = 1.0 if self.ball.y_speed > 0 else 0.0
+        # Compute Mamdani inference + centroid defuzzification
+        self.sim.compute()
+        v = float(self.sim.output['vout'])
 
-        edge_sign = 1 if self.ball.x_speed >= 0 else -1
-        desired_offset = edge_sign * self.edge_offset
+        # Saturate to paddle capability
+        vmax = float(self.racket.max_speed)
+        v = max(-vmax, min(vmax, v))
 
-        x_deg = self._mf_degree(self.x_mf, self.x_universe, float(x_diff))
-        y_deg = self._mf_degree(self.y_mf, self.y_universe, float(abs_y))
-
-        def v_follow(xd, yd):
-            return -self.k_follow * xd
-
-        def v_edge(xd, yd):
-            return -self.k_edge * (xd - desired_offset)
-
-        def v_large(xd, yd):
-            return -self.k_large * xd
-        w_follow = max(
-            x_deg["NS"], x_deg["Z"], x_deg["PS"],
-            min(x_deg["NL"], y_deg["far"]),
-            min(x_deg["PL"], y_deg["far"])
-        )
-        w_edge = min(y_deg["near"], approaching, x_deg["Z"])
-
-        w_large_left  = x_deg["NL"]
-        w_large_right = x_deg["PL"]
-        w_large = max(w_large_left, w_large_right)
-
-        numerator = (
-            w_follow * v_follow(x_diff, abs_y) +
-            w_edge   * v_edge(x_diff, abs_y)   +
-            w_large  * v_large(x_diff, abs_y)
-        )
-        denominator = (w_follow + w_edge + w_large + self.eps)
-        v = numerator / denominator
-
-        return int(round(self._saturate(v)))
+        return int(round(v))
 
     def act(self, x_diff: int, y_diff: int):
         v = self.make_decision(x_diff, y_diff)
         self.move(self.racket.rect.x + v)
 
+
 if __name__ == "__main__":
     #game = PongGame(800, 400, NaiveOponent, HumanPlayer)
-    game = PongGame(800, 400, NaiveOponent, FuzzyPlayer)
+    game = PongGame(800, 400, NaiveOponent, MamdaniPlayer)
     game.run()

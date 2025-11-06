@@ -6,7 +6,7 @@ import skfuzzy as fuzz
 import skfuzzy.control as fuzzcontrol
 
 FPS = 60  # TO DO FIX ME CHANGE ME TO 30
-TIME_SCALE = 1.5 # TO DO FIX ME DELETE ME
+TIME_SCALE = 2 # 1.5 # TO DO FIX ME DELETE ME
 
 
 
@@ -218,85 +218,113 @@ class HumanPlayer(Player):
         self.move(x)
 
 import numpy as np
+# 
+import numpy as np
+import skfuzzy as fuzz
 
-class FuzzyPlayer(Player):
+import numpy as np
+import skfuzzy as fuzz
+
+import numpy as np
+import skfuzzy as fuzz
+
+class TSKPlayer(Player):
     def __init__(self, racket: Racket, ball: Ball, board: Board):
-        super(FuzzyPlayer, self).__init__(racket, ball, board)
+        super(TSKPlayer, self).__init__(racket, ball, board)
 
         W = self.board.surface.get_width()
         H = self.board.surface.get_height()
+
+        # Universes
         self.x_universe = np.linspace(-W/2, W/2, 1001)
         self.y_universe = np.linspace(0, H, 1001)
 
-        span = W/2
-        s = span/6
+        # x_diff membership (negative => ball to RIGHT; positive => ball to LEFT)
+        s = W/12
         self.x_mf = {
-            "NL": fuzz.trapmf(self.x_universe, [-span, -span, -2.5*s, -1.5*s]),
-            "NS": fuzz.trimf(self.x_universe, [-2*s, -s, 0]),
-            "Z" : fuzz.trimf(self.x_universe, [-s, 0, s]),
-            "PS": fuzz.trimf(self.x_universe, [0, s, 2*s]),
-            "PL": fuzz.trapmf(self.x_universe, [1.5*s, 2.5*s, span, span]),
+            "NL": fuzz.trapmf(self.x_universe, [-W/2, -W/2, -4*s, -2*s]),
+            "NS": fuzz.trimf(self.x_universe,   [-3*s, -s,  0]),
+            "Z" : fuzz.trimf(self.x_universe,   [-s*0.6, 0, s*0.6]),
+            "PS": fuzz.trimf(self.x_universe,   [0, s,  3*s]),
+            "PL": fuzz.trapmf(self.x_universe,  [2*s, 4*s, W/2, W/2]),
         }
+
+        # Vertical distance only to modulate urgency (near vs far)
         y_near = H/6
         y_mid  = H/3
         self.y_mf = {
             "near": fuzz.trapmf(self.y_universe, [0, 0, y_near, y_mid]),
-            "mid" : fuzz.trimf(self.y_universe, [y_near/2, y_mid, y_mid*1.5]),
-            "far" : fuzz.trapmf(self.y_universe, [y_mid, y_mid*1.5, H, H]),
+            "far" : fuzz.trapmf(self.y_universe, [y_mid, H*0.75, H, H]),
         }
-        self.edge_offset = int(self.racket.width * 0.40)
 
-        self.k_follow = 0.85
-        self.k_edge   = 1.10
-        self.k_large  = 1.25
+        # First-order consequents: z = a*x_pred + b  (b=0 keeps it simple)
+        # Signs: x_pred < 0 => need to go RIGHT => positive v (a < 0 because v = a*x_pred)
+        vmax = float(self.racket.max_speed)
+        # Base gains; stronger than before so we don't get outrun
+        self.gain_fast = -0.20 * vmax   # for PL / NL (big errors)
+        self.gain_slow = -0.10 * vmax   # for PS / NS (small errors)
+        self.gain_zero =  0.0
+
         self.eps = 1e-6
 
-    def _mf_degree(self, mfs: dict, universe: np.ndarray, x: float) -> dict:
-        return {name: fuzz.interp_membership(universe, mf, x) for name, mf in mfs.items()}
+    def _deg(self, mfs: dict, U: np.ndarray, x: float) -> dict:
+        return {k: fuzz.interp_membership(U, mf, x) for k, mf in mfs.items()}
 
     def _saturate(self, v: float) -> float:
-        vmax = self.racket.max_speed
-        if v >  vmax: return vmax
-        if v < -vmax: return -vmax
-        return v
+        vmax = float(self.racket.max_speed)
+        return max(-vmax, min(vmax, v))
+
+    def _predict_xdiff(self, x_diff: float, y_diff: float) -> float:
+        # If ball is moving away, prediction doesn't help—just use current error
+        if self.ball.y_speed <= 0:
+            return x_diff
+
+        t_est = abs(y_diff) / (abs(self.ball.y_speed) + self.eps)
+        # Ball center delta in that time
+        dx_ball = self.ball.x_speed * t_est
+        # Our paddle will also move; we roughly account by assuming it can track a fraction
+        # of the error during t_est; this makes the prediction less aggressive.
+        track_factor = 0.35  # 0..1; higher = assume we can track more
+        dx_paddle_cap = self.racket.max_speed * t_est * track_factor
+
+        # Predicted error at contact (paddle - ball)
+        x_pred = x_diff - (dx_ball - np.sign(-x_diff) * dx_paddle_cap)
+        return x_pred
 
     def make_decision(self, x_diff: int, y_diff: int) -> int:
-        abs_y = abs(y_diff)
+        # Predict future error to reduce “arriving late”
+        x_pred = float(self._predict_xdiff(float(x_diff), float(y_diff)))
+        abs_y  = float(abs(y_diff))
 
-        approaching = 1.0 if self.ball.y_speed > 0 else 0.0
+        x_deg = self._deg(self.x_mf, self.x_universe, x_pred)
+        y_deg = self._deg(self.y_mf, self.y_universe, abs_y)
 
-        edge_sign = 1 if self.ball.x_speed >= 0 else -1
-        desired_offset = edge_sign * self.edge_offset
+        # Rule weights (min for AND), with near/far urgency
+        # Left side (x_pred > 0) => need LEFT (negative v) => a should be negative
+        w_PL = min(x_deg["PL"], y_deg["near"])
+        w_PS = x_deg["PS"]
+        w_Z  = x_deg["Z"]
+        w_NS = x_deg["NS"]
+        w_NL = min(x_deg["NL"], y_deg["near"])
 
-        x_deg = self._mf_degree(self.x_mf, self.x_universe, float(x_diff))
-        y_deg = self._mf_degree(self.y_mf, self.y_universe, float(abs_y))
+        # Damp the extreme rules when the ball is far in Y
+        far = y_deg["far"]
+        w_PL *= (1 - 0.35 * far)
+        w_NL *= (1 - 0.35 * far)
 
-        def v_follow(xd, yd):
-            return -self.k_follow * xd
+        # First-order consequents: z = a*x_pred + b  (b=0)
+        # Gains chosen so that:
+        #   x_pred < 0  -> z > 0 (move RIGHT)
+        #   x_pred > 0  -> z < 0 (move LEFT)
+        z_PL = self.gain_fast * x_pred
+        z_PS = self.gain_slow * x_pred
+        z_Z  = self.gain_zero * x_pred
+        z_NS = self.gain_slow * x_pred
+        z_NL = self.gain_fast * x_pred
 
-        def v_edge(xd, yd):
-            return -self.k_edge * (xd - desired_offset)
-
-        def v_large(xd, yd):
-            return -self.k_large * xd
-        w_follow = max(
-            x_deg["NS"], x_deg["Z"], x_deg["PS"],
-            min(x_deg["NL"], y_deg["far"]),
-            min(x_deg["PL"], y_deg["far"])
-        )
-        w_edge = min(y_deg["near"], approaching, x_deg["Z"])
-
-        w_large_left  = x_deg["NL"]
-        w_large_right = x_deg["PL"]
-        w_large = max(w_large_left, w_large_right)
-
-        numerator = (
-            w_follow * v_follow(x_diff, abs_y) +
-            w_edge   * v_edge(x_diff, abs_y)   +
-            w_large  * v_large(x_diff, abs_y)
-        )
-        denominator = (w_follow + w_edge + w_large + self.eps)
-        v = numerator / denominator
+        num = w_PL*z_PL + w_PS*z_PS + w_Z*z_Z + w_NS*z_NS + w_NL*z_NL
+        den = w_PL + w_PS + w_Z + w_NS + w_NL + self.eps
+        v = num / den
 
         return int(round(self._saturate(v)))
 
@@ -304,7 +332,10 @@ class FuzzyPlayer(Player):
         v = self.make_decision(x_diff, y_diff)
         self.move(self.racket.rect.x + v)
 
+
+
+
 if __name__ == "__main__":
     #game = PongGame(800, 400, NaiveOponent, HumanPlayer)
-    game = PongGame(800, 400, NaiveOponent, FuzzyPlayer)
+    game = PongGame(800, 400, NaiveOponent, TSKPlayer)
     game.run()

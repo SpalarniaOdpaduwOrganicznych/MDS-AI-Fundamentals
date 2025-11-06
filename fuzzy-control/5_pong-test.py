@@ -1,13 +1,3 @@
-"""
-Headless fast-forward simulator for Pong with FuzzyPlayer.
-Plays N rounds (first miss per round) and prints win rate.
-
-Assumes your main game code is in 'pong_game.py' and contains:
-- PongGame, NaiveOponent, FuzzyPlayer, Racket, Ball, Board, FPS, TIME_SCALE (optional)
-
-If your module name differs, change the import below.
-"""
-
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 
