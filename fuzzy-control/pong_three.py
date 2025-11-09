@@ -234,11 +234,8 @@ class MamdaniPlayer(Player):
         self.y_universe = np.linspace(0, H, 1001)
         self.v_universe = np.linspace(-vmax, vmax, 801)
 
-        # Antecedents
         self.xdiff = ctrl.Antecedent(self.x_universe, 'xdiff')
         self.ydist = ctrl.Antecedent(self.y_universe, 'ydist')  # |y_diff|
-
-        # Consequent
         self.vout  = ctrl.Consequent(self.v_universe, 'vout')
 
         # x_diff membership (5 sets)
@@ -249,30 +246,28 @@ class MamdaniPlayer(Player):
         self.xdiff['PS'] = fuzz.trimf(self.x_universe, [0, s, 2*s])
         self.xdiff['PL'] = fuzz.trapmf(self.x_universe, [1.5*s, 3*s, W/2, W/2])
 
-        # y distance (near vs far)
+        # y (near vs far)
         y_near = H/5
         y_mid  = H/3
         self.ydist['near'] = fuzz.trapmf(self.y_universe, [0, 0, y_near, y_mid])
         self.ydist['far']  = fuzz.trapmf(self.y_universe, [y_mid, H*0.75, H, H])
 
-        # Output velocity fuzzy sets (Mamdani consequents)
-        # Negative = LEFT, Positive = RIGHT
-        # Fast left/right are near the extremes; slow ones are mid; stop around 0.
+        # x
         self.vout['FAST_LEFT']  = fuzz.trapmf(self.v_universe, [-vmax, -vmax, -0.85*vmax, -0.55*vmax])
         self.vout['SLOW_LEFT']  = fuzz.trimf(self.v_universe,  [-0.65*vmax, -0.40*vmax, -0.15*vmax])
         self.vout['STOP']       = fuzz.trimf(self.v_universe,  [-0.10*vmax, 0.0, 0.10*vmax])
         self.vout['SLOW_RIGHT'] = fuzz.trimf(self.v_universe,  [ 0.15*vmax,  0.40*vmax,  0.65*vmax])
         self.vout['FAST_RIGHT'] = fuzz.trapmf(self.v_universe, [ 0.55*vmax,  0.85*vmax,  vmax,      vmax])
 
-        # --- Rulebase (min for AND, max for OR; centroid defuzz) ---
+        # rules
         rules = []
-        # Strong moves only when near (so we don’t overreact early)
+        # Strong moves <--> near
         rules.append(ctrl.Rule(self.xdiff['PL'] & self.ydist['near'], self.vout['FAST_LEFT']))
         rules.append(ctrl.Rule(self.xdiff['NL'] & self.ydist['near'], self.vout['FAST_RIGHT']))
-        # When far, be gentler
+        # gentle moves <--> far
         rules.append(ctrl.Rule(self.xdiff['PL'] & self.ydist['far'],  self.vout['SLOW_LEFT']))
         rules.append(ctrl.Rule(self.xdiff['NL'] & self.ydist['far'],  self.vout['SLOW_RIGHT']))
-        # Middle bands independent of y
+        # mid when mid
         rules.append(ctrl.Rule(self.xdiff['PS'], self.vout['SLOW_LEFT']))
         rules.append(ctrl.Rule(self.xdiff['NS'], self.vout['SLOW_RIGHT']))
         rules.append(ctrl.Rule(self.xdiff['Z'],  self.vout['STOP']))

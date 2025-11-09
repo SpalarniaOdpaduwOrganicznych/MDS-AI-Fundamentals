@@ -218,14 +218,6 @@ class HumanPlayer(Player):
         self.move(x)
 
 import numpy as np
-# 
-import numpy as np
-import skfuzzy as fuzz
-
-import numpy as np
-import skfuzzy as fuzz
-
-import numpy as np
 import skfuzzy as fuzz
 
 class TSKPlayer(Player):
@@ -239,17 +231,17 @@ class TSKPlayer(Player):
         self.x_universe = np.linspace(-W/2, W/2, 1001)
         self.y_universe = np.linspace(0, H, 1001)
 
-        # x_diff membership (negative => ball to RIGHT; positive => ball to LEFT)
+        # N => ball to R and P => ball to L
         s = W/12
         self.x_mf = {
             "NL": fuzz.trapmf(self.x_universe, [-W/2, -W/2, -4*s, -2*s]),
             "NS": fuzz.trimf(self.x_universe,   [-3*s, -s,  0]),
-            "Z" : fuzz.trimf(self.x_universe,   [-s*0.6, 0, s*0.6]),
+            "Z" : fuzz.trimf(self.x_universe,   [-s*0.6, 0, s*0.6]), # mid
             "PS": fuzz.trimf(self.x_universe,   [0, s,  3*s]),
             "PL": fuzz.trapmf(self.x_universe,  [2*s, 4*s, W/2, W/2]),
         }
 
-        # Vertical distance only to modulate urgency (near vs far)
+        # check Y urgency (near vs far)
         y_near = H/6
         y_mid  = H/3
         self.y_mf = {
