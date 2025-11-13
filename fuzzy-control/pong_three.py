@@ -240,7 +240,7 @@ class MamdaniPlayer(Player):
 
         # x_diff membership (5 sets)
         s = W/10
-        self.xdiff['NL'] = fuzz.trapmf(self.x_universe, [-W/2, -W/2, -3*s, -1.5*s])  # ball far RIGHT
+        self.xdiff['NL'] = fuzz.trapmf(self.x_universe, [-W/2, -W/2, -3*s, -1.5*s])
         self.xdiff['NS'] = fuzz.trimf(self.x_universe, [-2*s, -s, 0])
         self.xdiff['Z']  = fuzz.trimf(self.x_universe, [-s*0.6, 0, s*0.6])
         self.xdiff['PS'] = fuzz.trimf(self.x_universe, [0, s, 2*s])
@@ -273,7 +273,7 @@ class MamdaniPlayer(Player):
         rules.append(ctrl.Rule(self.xdiff['Z'],  self.vout['STOP']))
 
         self.system = ctrl.ControlSystem(rules)
-        # Reuse one simulation object each frame (faster than recreating)
+
         self.sim = ctrl.ControlSystemSimulation(self.system, flush_after_run=50)
 
     def make_decision(self, x_diff: int, y_diff: int) -> int:
@@ -285,7 +285,7 @@ class MamdaniPlayer(Player):
         self.sim.compute()
         v = float(self.sim.output['vout'])
 
-        # Saturate to paddle capability
+        # to paddle capability
         vmax = float(self.racket.max_speed)
         v = max(-vmax, min(vmax, v))
 

@@ -231,7 +231,7 @@ class TSKPlayer(Player):
         self.x_universe = np.linspace(-W/2, W/2, 1001)
         self.y_universe = np.linspace(0, H, 1001)
 
-        # N => ball to R and P => ball to L
+        # N ball to R and P ball to L
         s = W/12
         self.x_mf = {
             "NL": fuzz.trapmf(self.x_universe, [-W/2, -W/2, -4*s, -2*s]),
@@ -241,7 +241,6 @@ class TSKPlayer(Player):
             "PL": fuzz.trapmf(self.x_universe,  [2*s, 4*s, W/2, W/2]),
         }
 
-        # check Y urgency (near vs far)
         y_near = H/6
         y_mid  = H/3
         self.y_mf = {
@@ -249,12 +248,10 @@ class TSKPlayer(Player):
             "far" : fuzz.trapmf(self.y_universe, [y_mid, H*0.75, H, H]),
         }
 
-        # First-order consequents: z = a*x_pred + b  (b=0 keeps it simple)
-        # Signs: x_pred < 0 => need to go RIGHT => positive v (a < 0 because v = a*x_pred)
         vmax = float(self.racket.max_speed)
-        # Base gains; stronger than before so we don't get outrun
-        self.gain_fast = -0.20 * vmax   # for PL / NL (big errors)
-        self.gain_slow = -0.10 * vmax   # for PS / NS (small errors)
+
+        self.gain_fast = -0.20 * vmax
+        self.gain_slow = -0.10 * vmax
         self.gain_zero =  0.0
 
         self.eps = 1e-6
@@ -267,32 +264,24 @@ class TSKPlayer(Player):
         return max(-vmax, min(vmax, v))
 
     def _predict_xdiff(self, x_diff: float, y_diff: float) -> float:
-        # If ball is moving away, prediction doesn't help—just use current error
         if self.ball.y_speed <= 0:
             return x_diff
 
         t_est = abs(y_diff) / (abs(self.ball.y_speed) + self.eps)
-        # Ball center delta in that time
         dx_ball = self.ball.x_speed * t_est
-        # Our paddle will also move; we roughly account by assuming it can track a fraction
-        # of the error during t_est; this makes the prediction less aggressive.
-        track_factor = 0.35  # 0..1; higher = assume we can track more
+        track_factor = 0.35
         dx_paddle_cap = self.racket.max_speed * t_est * track_factor
 
-        # Predicted error at contact (paddle - ball)
         x_pred = x_diff - (dx_ball - np.sign(-x_diff) * dx_paddle_cap)
         return x_pred
 
     def make_decision(self, x_diff: int, y_diff: int) -> int:
-        # Predict future error to reduce “arriving late”
         x_pred = float(self._predict_xdiff(float(x_diff), float(y_diff)))
         abs_y  = float(abs(y_diff))
 
         x_deg = self._deg(self.x_mf, self.x_universe, x_pred)
         y_deg = self._deg(self.y_mf, self.y_universe, abs_y)
 
-        # Rule weights (min for AND), with near/far urgency
-        # Left side (x_pred > 0) => need LEFT (negative v) => a should be negative
         w_PL = min(x_deg["PL"], y_deg["near"])
         w_PS = x_deg["PS"]
         w_Z  = x_deg["Z"]
@@ -304,10 +293,6 @@ class TSKPlayer(Player):
         w_PL *= (1 - 0.35 * far)
         w_NL *= (1 - 0.35 * far)
 
-        # First-order consequents: z = a*x_pred + b  (b=0)
-        # Gains chosen so that:
-        #   x_pred < 0  -> z > 0 (move RIGHT)
-        #   x_pred > 0  -> z < 0 (move LEFT)
         z_PL = self.gain_fast * x_pred
         z_PS = self.gain_slow * x_pred
         z_Z  = self.gain_zero * x_pred
