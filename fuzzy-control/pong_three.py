@@ -281,11 +281,9 @@ class MamdaniPlayer(Player):
         self.sim.input['xdiff'] = float(x_diff)
         self.sim.input['ydist'] = float(abs(y_diff))
 
-        # Compute Mamdani inference + centroid defuzzification
         self.sim.compute()
         v = float(self.sim.output['vout'])
 
-        # to paddle capability
         vmax = float(self.racket.max_speed)
         v = max(-vmax, min(vmax, v))
 

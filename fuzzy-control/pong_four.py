@@ -284,7 +284,7 @@ class TSKPlayer(Player):
 
         w_PL = min(x_deg["PL"], y_deg["near"])
         w_PS = x_deg["PS"]
-        w_Z  = x_deg["Z"]
+        w_Z  = x_deg["Z"]x
         w_NS = x_deg["NS"]
         w_NL = min(x_deg["NL"], y_deg["near"])
 

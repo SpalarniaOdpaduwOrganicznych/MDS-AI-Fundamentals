@@ -286,27 +286,16 @@ class HumanPlayer(Player):
 
 class SearchBasedPlayer(Player):
     def __init__(self, algorithm: str = "bfs"):
-        """
-        algorithm: "bfs" or "dfs"
-        """
         super(SearchBasedPlayer, self).__init__()
         self.algorithm = algorithm.lower()
-        self.no_path = False  # when True, we stop trying to search
+        self.no_path = False
 
     def move(self, snake: Snake) -> bool:
-        """
-        Override to stop triggering new searches once we decided
-        that no path exists. Otherwise, behaviour is the same as Player.move.
-        """
         if self.no_path:
-            # keep moving in the current direction, but don't ask for new paths
             return False
         return super(SearchBasedPlayer, self).move(snake)
 
     def search_path(self, snake: Snake, food: Food, *obstacles: Set[Obstacle]):
-        from collections import deque
-
-        # Reset planning state for this search
         self.chosen_path = []
         self.visited = set()
         self.no_path = False
@@ -314,58 +303,52 @@ class SearchBasedPlayer(Player):
         start = snake.get_head_position()
         goal = food.position
 
-        # Blocks: snake body (except head) + obstacle tiles
         blocked: Set[Position] = set(snake.positions[1:])
 
-        # obstacles is a var-arg; in this game it's a single set of Obstacle
         obstacle_positions: Set[Position] = set()
         for group in obstacles:
             for ob in group:
                 obstacle_positions.add(ob.position)
 
-        # Treat obstacle tiles as "infinite cost" (blocked) to avoid them
         blocked |= obstacle_positions
 
-        # Trivial case
         if start == goal:
             return
 
-        # Choose BFS or DFS frontier type
         use_bfs = (self.algorithm == "bfs")
 
-        if use_bfs:
-            frontier = deque([start])
-            pop_frontier = frontier.popleft   # FIFO → BFS
-            push_frontier = frontier.append
-        else:
-            frontier = [start]
-            pop_frontier = frontier.pop       # LIFO → DFS
-            push_frontier = frontier.append
+        frontier: List[Position] = [start]
+        head = 0
 
-        came_from = {start: None}            # Position -> previous Position
-        move_from = {}                       # Position -> Direction used to reach it
+        came_from = {start: None}
+        move_from = {}
         visited_local: Set[Position] = {start}
-        self.visited.add(start)              # for visualisation (blue tiles)
+        self.visited.add(start)
 
         found = False
 
-        while frontier:
-            current = pop_frontier()
+        while True:
+            if use_bfs:
+                if head >= len(frontier):
+                    break
+                current = frontier[head]
+                head += 1
+            else:
+                if not frontier:
+                    break
+                current = frontier.pop()
 
             if current == goal:
                 found = True
                 break
 
-            # Expand 4-neighbourhood
             for direction in Direction:
                 dx, dy = direction.value
                 new_pos = Position(current.x + dx, current.y + dy)
 
-                # Out of bounds?
                 if new_pos.check_bounds(GRID_WIDTH, GRID_HEIGHT):
                     continue
 
-                # Don't step on body or obstacles
                 if new_pos in blocked:
                     continue
 
@@ -373,19 +356,17 @@ class SearchBasedPlayer(Player):
                     continue
 
                 visited_local.add(new_pos)
-                self.visited.add(new_pos)  # will be drawn blue
+                self.visited.add(new_pos)
 
                 came_from[new_pos] = current
                 move_from[new_pos] = direction
-                push_frontier(new_pos)
+
+                frontier.append(new_pos)
 
         if not found:
-            # No path – from now on, don't try to search again
-            # until the snake resets (snake.hasReset == True)
             self.no_path = True
             return
 
-        # Reconstruct path from goal → start
         path: List[Direction] = []
         cur = goal
         while cur != start:
@@ -393,18 +374,12 @@ class SearchBasedPlayer(Player):
             path.insert(0, direction)
             cur = came_from[cur]
 
-        # Store the planned moves to be executed step by step
         self.chosen_path = path
-
-
-
 
 if __name__ == "__main__":
     snake = Snake(WIDTH, WIDTH, INIT_LENGTH)
 
     player = SearchBasedPlayer("bfs")
-
-    # player = SearchBasedPlayer("dfs")
 
     game = SnakeGame(snake, player)
     game.run()
