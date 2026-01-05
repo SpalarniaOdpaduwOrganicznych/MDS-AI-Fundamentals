@@ -11,110 +11,84 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from data_gen import generate_two_class_data
-from neuron import SingleNeuron, LRSchedule
+from neuron import SingleNeuron, LRScheduleCosine
 from utils import as_int, as_float
 
 
-EVAL_ACTIVATIONS = [
-    "heaviside",
-    "logistic",
-    "tanh",        # grade 4 (method B)
-    "sin",         # grade 4 (method B)
-    "sign",        # grade 5 eval
-    "relu",        # grade 5 eval
-    "leaky_relu",  # grade 5 eval
-]
+ACTIVATIONS = ["heaviside", "logistic", "tanh", "sin"]  # Grade 3 + Grade 4
+TRAINABLE = set(ACTIVATIONS)
 
-TRAINABLE = {"heaviside", "logistic", "tanh", "sin"}
 
-# ox OD im fcking dying jk
 class SingleNeuronGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("🌸AI task 3🌸")
-        self.geometry("1120x700")
+        self.title("ai del rey")
+        self.geometry("1100x680")
 
         self.X: np.ndarray | None = None
         self.y: np.ndarray | None = None
 
-        self.model = SingleNeuron(lr=0.05, activation="heaviside", beta=2.0, leaky_alpha=0.01, seed=0)
+        self.model = SingleNeuron(lr=0.05, activation="heaviside", beta=2.0, seed=0)
 
-        # Theme first, then build plot (so redraw won't crash), then controls
-        self._apply_pink_theme()
-        self._build_plot()
+        self._apply_rose_theme()
+        self._build_plot()      # build plot first to avoid redraw issues
         self._build_controls()
         self._redraw()
 
-    # ---------------- Theme ----------------
-    def _apply_pink_theme(self):
+    # ---------------- Theme (rose/pink, no emoji) ----------------
+    def _apply_rose_theme(self):
+        self.rose_bg = "#fde7ee"       # very light rose
+        self.rose_panel = "#f8c9d6"    # panel rose
+        self.rose_accent = "#c2185b"   # deep rose accent
+        self.rose_text = "#3a1020"
+        self.rose_white = "#ffffff"
+        self.plot_bg = "#fff2f6"
+
+        self.configure(bg=self.rose_bg)
+
         style = ttk.Style(self)
         try:
             style.theme_use("clam")
         except Exception:
             pass
 
-        self._pink_bg = "#ffe4f1"
-        self._pink_panel = "#ffd1e8"
-        self._pink_accent = "#ff5aa5"
-        self._text = "#3a1b2c"
-        self._white = "#ffffff"
+        style.configure("Panel.TFrame", background=self.rose_panel)
+        style.configure("Rose.TLabel", background=self.rose_panel, foreground=self.rose_text, font=("Segoe UI", 10))
+        style.configure("Header.TLabel", background=self.rose_panel, foreground=self.rose_text, font=("Segoe UI", 12, "bold"))
+        style.configure("Section.TLabel", background=self.rose_panel, foreground=self.rose_text, font=("Segoe UI", 11, "bold"))
 
-        self.configure(bg=self._pink_bg)
-
-        # Frames / Labels
-        style.configure("PinkBg.TFrame", background=self._pink_bg)
-        style.configure("Panel.TFrame", background=self._pink_panel)
-
-        style.configure("Pink.TLabel", background=self._pink_panel, foreground=self._text, font=("Segoe UI", 10))
-        style.configure("Header.TLabel", background=self._pink_panel, foreground=self._text, font=("Segoe UI", 13, "bold"))
-        style.configure("Section.TLabel", background=self._pink_panel, foreground=self._text, font=("Segoe UI", 11, "bold"))
-
-        # Buttons
-        style.configure("Pink.TButton", background=self._pink_accent, foreground=self._white,
+        style.configure("Rose.TButton", background=self.rose_accent, foreground=self.rose_white,
                         padding=8, font=("Segoe UI", 10, "bold"))
-        style.map("Pink.TButton",
-                  background=[("active", "#ff78b8"), ("pressed", "#ff3f9a")],
-                  foreground=[("disabled", "#f3f3f3")])
+        style.map("Rose.TButton",
+                  background=[("active", "#d81b60"), ("pressed", "#ad1457")])
 
-        # Inputs
-        style.configure("Pink.TEntry", fieldbackground=self._white, foreground=self._text)
-        style.configure("Pink.TCombobox", fieldbackground=self._white, foreground=self._text)
-
-        # Checkbutton
-        style.configure("Pink.TCheckbutton", background=self._pink_panel, foreground=self._text)
-
-        # Separator
-        style.configure("Pink.TSeparator", background=self._pink_panel)
+        style.configure("Rose.TEntry", fieldbackground=self.rose_white, foreground=self.rose_text)
+        style.configure("Rose.TCombobox", fieldbackground=self.rose_white, foreground=self.rose_text)
+        style.configure("Rose.TCheckbutton", background=self.rose_panel, foreground=self.rose_text)
 
     # ---------------- UI ----------------
     def _build_controls(self):
         panel = ttk.Frame(self, padding=10, style="Panel.TFrame")
         panel.pack(side=tk.LEFT, fill=tk.Y)
 
-        def label(text: str):
-            return ttk.Label(panel, text=text, style="Pink.TLabel")
+        def lab(text: str, row: int, col: int = 0, colspan: int = 1, style: str = "Rose.TLabel", pady=(3, 3)):
+            ttk.Label(panel, text=text, style=style).grid(row=row, column=col, columnspan=colspan, sticky="w", pady=pady)
 
-        def section(text: str, row: int):
-            ttk.Label(panel, text=text, style="Section.TLabel").grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
-
-        def entry(row: int, label_text: str, default):
-            label(label_text).grid(row=row, column=0, sticky="w", pady=3)
+        def entry(row: int, label: str, default):
+            lab(label, row, 0)
             var = tk.StringVar(value=str(default))
-            ttk.Entry(panel, textvariable=var, width=12, style="Pink.TEntry").grid(row=row, column=1, sticky="w", padx=6, pady=3)
+            ttk.Entry(panel, textvariable=var, width=12, style="Rose.TEntry").grid(row=row, column=1, sticky="w", padx=6, pady=3)
             return var
 
         r = 0
-        ttk.Label(panel, text="🌸 Lana del rey task 3🌸", style="Header.TLabel").grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=(0, 10)
-        )
-        r += 1
+        lab("ai del rey", r, colspan=2, style="Header.TLabel", pady=(0, 10)); r += 1
 
-        section("Data generation", r); r += 1
+        lab("Data generation", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
         self.var_modes0 = entry(r, "Modes (class 0):", 2); r += 1
         self.var_modes1 = entry(r, "Modes (class 1):", 2); r += 1
         self.var_spm    = entry(r, "Samples per mode:", 80); r += 1
 
-        ttk.Separator(panel, orient="horizontal", style="Pink.TSeparator").grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
+        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
 
         self.var_mean_lo = entry(r, "Mean min:", -1.0); r += 1
         self.var_mean_hi = entry(r, "Mean max:",  1.0); r += 1
@@ -122,14 +96,14 @@ class SingleNeuronGUI(tk.Tk):
         self.var_std_hi  = entry(r, "Std max:",  0.45); r += 1
         self.var_seed    = entry(r, "Random seed:", 0); r += 1
 
-        ttk.Separator(panel, orient="horizontal", style="Pink.TSeparator").grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
+        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
 
-        section("Neuron (evaluation/training)", r); r += 1
+        lab("Neuron training + evaluation", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
 
-        label("Activation:").grid(row=r, column=0, sticky="w", pady=3)
+        lab("Activation:", r, 0)
         self.var_act = tk.StringVar(value="heaviside")
         cb = ttk.Combobox(panel, textvariable=self.var_act, width=12, state="readonly",
-                          values=EVAL_ACTIVATIONS, style="Pink.TCombobox")
+                          values=ACTIVATIONS, style="Rose.TCombobox")
         cb.grid(row=r, column=1, sticky="w", padx=6, pady=3)
         cb.bind("<<ComboboxSelected>>", lambda e: self._on_activation_change())
         r += 1
@@ -137,77 +111,47 @@ class SingleNeuronGUI(tk.Tk):
         self.var_lr     = entry(r, "Base LR η:", 0.05); r += 1
         self.var_epochs = entry(r, "Epochs:", 30); r += 1
         self.var_beta   = entry(r, "Sigmoid β:", 2.0); r += 1
-        self.var_lalpha = entry(r, "Leaky α:", 0.01); r += 1
 
-        ttk.Separator(panel, orient="horizontal", style="Pink.TSeparator").grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
+        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
 
-        # Grade 4 Method A: variable LR (cosine)
+        # Grade 4 alternative: variable LR (cosine)
         self.var_use_sched = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            panel,
-            text="Use variable LR (cosine)  🌷",
-            variable=self.var_use_sched,
-            style="Pink.TCheckbutton",
-        ).grid(row=r, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        ttk.Checkbutton(panel, text="Variable LR (cosine) [Grade 4 alt]",
+                        variable=self.var_use_sched, style="Rose.TCheckbutton").grid(
+            row=r, column=0, columnspan=2, sticky="w", pady=(0, 4)
+        )
         r += 1
-
         self.var_eta_min = entry(r, "η_min:", 0.005); r += 1
         self.var_eta_max = entry(r, "η_max:", 0.05); r += 1
 
-        ttk.Separator(panel, orient="horizontal", style="Pink.TSeparator").grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
+        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
 
-        ttk.Button(panel, text="Generate data 🌸", command=self.on_generate, style="Pink.TButton").grid(
-            row=r, column=0, columnspan=2, sticky="ew", pady=4
-        )
-        r += 1
-        ttk.Button(panel, text="Train neuron ✨", command=self.on_train, style="Pink.TButton").grid(
-            row=r, column=0, columnspan=2, sticky="ew", pady=4
-        )
-        r += 1
-        ttk.Button(panel, text="Reset weights 💮", command=self.on_reset_weights, style="Pink.TButton").grid(
-            row=r, column=0, columnspan=2, sticky="ew", pady=4
-        )
-        r += 1
+        ttk.Button(panel, text="Generate data", command=self.on_generate, style="Rose.TButton").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
+        ttk.Button(panel, text="Train neuron", command=self.on_train, style="Rose.TButton").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
+        ttk.Button(panel, text="Reset weights", command=self.on_reset_weights, style="Rose.TButton").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
 
-        ttk.Separator(panel, orient="horizontal", style="Pink.TSeparator").grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
-        self.status = tk.StringVar(value="Generate data to begin 🌼")
-        ttk.Label(panel, textvariable=self.status, style="Pink.TLabel", wraplength=300).grid(
-            row=r, column=0, columnspan=2, sticky="w"
-        )
+        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
+        self.status = tk.StringVar(value="Generate data to begin.")
+        ttk.Label(panel, textvariable=self.status, style="Rose.TLabel", wraplength=280).grid(row=r, column=0, columnspan=2, sticky="w")
 
         self._on_activation_change()
 
     def _build_plot(self):
-        frame = ttk.Frame(self, padding=10, style="PinkBg.TFrame")
+        frame = ttk.Frame(self, padding=10)
         frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        self.fig = Figure(figsize=(7.9, 5.7), dpi=100)
+        self.fig = Figure(figsize=(7.8, 5.6), dpi=100)
         self.ax = self.fig.add_subplot(111)
-        self.fig.patch.set_facecolor(self._pink_bg)
-        self.ax.set_facecolor("#fff0f7")
 
-        self.ax.set_title("Samples")
+        self.fig.patch.set_facecolor(self.rose_bg)
+        self.ax.set_facecolor(self.plot_bg)
+
+        self.ax.set_title("Samples + Decision Boundary")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-    def _on_activation_change(self):
-        act = self.var_act.get().lower()
-        try:
-            lr = as_float(self.var_lr.get(), "Base LR η")
-            beta = as_float(self.var_beta.get(), "Sigmoid β")
-            lalpha = as_float(self.var_lalpha.get(), "Leaky α")
-            self.model.set_params(lr=lr, activation=act, beta=beta, leaky_alpha=lalpha)
-        except Exception:
-            pass
-
-        if act not in TRAINABLE:
-            self.status.set(f"Activation '{act}' is evaluation-only 🌷 (Grade 5). Training will warn.")
-        else:
-            self.status.set("Ready 🌸 Generate data, then train.")
-        self._redraw()
 
     # ---------------- Plot helpers ----------------
     def _plot_limits(self):
@@ -222,14 +166,12 @@ class SingleNeuronGUI(tk.Tk):
     def _draw_background(self):
         if self.X is None or self.X.size == 0:
             return
-
         x0, x1, y0, y1 = self._plot_limits()
         xs = np.linspace(x0, x1, 260)
         ys = np.linspace(y0, y1, 260)
         XX, YY = np.meshgrid(xs, ys)
         grid = np.c_[XX.ravel(), YY.ravel()]
-
-        zz = self.model.predict_label(grid).reshape(XX.shape)
+        zz = self.model.predict_labels(grid).reshape(XX.shape)
         self.ax.contourf(XX, YY, zz, levels=[-0.5, 0.5, 1.5], alpha=0.25)
 
     def _draw_points(self):
@@ -253,29 +195,16 @@ class SingleNeuronGUI(tk.Tk):
             if abs(w1) < 1e-9:
                 return
             x_line = -b / w1
-            self.ax.plot([x_line, x_line], [y0, y1], linewidth=2)
+            self.ax.plot([x_line, x_line], [y0, y1], linewidth=2, zorder=5)
         else:
             xs = np.array([x0, x1])
             ys = -(w1 * xs + b) / w2
-            self.ax.plot(xs, ys, linewidth=2)
-
-    def _add_flower_corners(self):
-        if self.X is None or self.X.size == 0:
-            return
-        x0, x1, y0, y1 = self._plot_limits()
-        self.ax.text(x0, y1, "🌸", fontsize=16, va="top", ha="left")
-        self.ax.text(x1, y1, "🌷", fontsize=16, va="top", ha="right")
-        self.ax.text(x0, y0, "🌼", fontsize=16, va="bottom", ha="left")
-        self.ax.text(x1, y0, "💮", fontsize=16, va="bottom", ha="right")
+            self.ax.plot(xs, ys, linewidth=2, zorder=5)
 
     def _redraw(self):
-        # Safety: if called before plot is built
-        if not hasattr(self, "ax"):
-            return
-
         self.ax.clear()
-        self.ax.set_facecolor("#fff0f7")
-        self.ax.set_title("Samples")
+        self.ax.set_facecolor(self.plot_bg)
+        self.ax.set_title("Samples + Decision Boundary")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")
 
@@ -283,7 +212,6 @@ class SingleNeuronGUI(tk.Tk):
             self._draw_background()
             self._draw_points()
             self._draw_boundary_line()
-            self._add_flower_corners()
             x0, x1, y0, y1 = self._plot_limits()
             self.ax.set_xlim(x0, x1)
             self.ax.set_ylim(y0, y1)
@@ -292,6 +220,16 @@ class SingleNeuronGUI(tk.Tk):
         self.canvas.draw()
 
     # ---------------- Callbacks ----------------
+    def _on_activation_change(self):
+        act = self.var_act.get().lower()
+        try:
+            lr = as_float(self.var_lr.get(), "Base LR η")
+            beta = as_float(self.var_beta.get(), "Sigmoid β")
+            self.model.set_params(lr=lr, activation=act, beta=beta)
+        except Exception:
+            pass
+        self._redraw()
+
     def on_generate(self):
         try:
             modes0 = as_int(self.var_modes0.get(), "Modes (class 0)", 0)
@@ -312,39 +250,28 @@ class SingleNeuronGUI(tk.Tk):
             )
 
             self.model.reset(seed=seed)
-            self.status.set(f"Generated {self.X.shape[0]} samples 🌸 Weights reset.")
+            self.status.set(f"Generated {self.X.shape[0]} samples. Weights reset.")
             self._redraw()
         except Exception as e:
             messagebox.showerror("Generate error", str(e))
 
     def on_train(self):
         if self.X is None or self.y is None or self.X.size == 0:
-            messagebox.showinfo("No data", "Generate data first 🌼")
-            return
-
-        act = self.var_act.get().lower()
-        if act not in TRAINABLE:
-            messagebox.showwarning(
-                "Evaluation-only activation",
-                f"Activation '{act}' is required only for Grade 5 evaluation.\n"
-                f"Training is not implemented for it (rubric doesn’t require it)."
-            )
+            messagebox.showinfo("No data", "Generate data first.")
             return
 
         try:
+            act = self.var_act.get().lower()
             lr = as_float(self.var_lr.get(), "Base LR η")
             epochs = as_int(self.var_epochs.get(), "Epochs", 1)
             beta = as_float(self.var_beta.get(), "Sigmoid β")
-            lalpha = as_float(self.var_lalpha.get(), "Leaky α")
 
             if lr <= 0:
                 raise ValueError("Base LR η must be > 0")
             if beta <= 0:
                 raise ValueError("Sigmoid β must be > 0")
-            if lalpha <= 0:
-                raise ValueError("Leaky α must be > 0")
 
-            self.model.set_params(lr=lr, activation=act, beta=beta, leaky_alpha=lalpha)
+            self.model.set_params(lr=lr, activation=act, beta=beta)
 
             sched = None
             if self.var_use_sched.get():
@@ -352,13 +279,16 @@ class SingleNeuronGUI(tk.Tk):
                 eta_max = as_float(self.var_eta_max.get(), "η_max")
                 if eta_min <= 0 or eta_max <= 0 or eta_max < eta_min:
                     raise ValueError("Need 0 < η_min ≤ η_max")
-                sched = LRSchedule(eta_min=eta_min, eta_max=eta_max)
+                sched = LRScheduleCosine(eta_min=eta_min, eta_max=eta_max)
 
             losses = self.model.train_sgd(self.X, self.y, epochs=epochs, shuffle=True, lr_schedule=sched)
             acc = self.model.accuracy(self.X, self.y)
 
-            extra = " 🌷 (variable LR)" if sched is not None else ""
-            self.status.set(f"Trained {epochs} epochs{extra}. MSE={losses[-1]:.4f}, Acc={acc*100:.1f}% ✨")
+            sched_txt = " + variable LR" if sched is not None else ""
+            self.status.set(f"Trained {epochs} epochs ({act}{sched_txt}). MSE={losses[-1]:.4f}, Acc={acc*100:.2f}%")
+            print(f"Final weights: {self.model.w}")
+            print(f"Accuracy: {acc*100:.2f}%")
+
             self._redraw()
 
         except Exception as e:
@@ -370,5 +300,5 @@ class SingleNeuronGUI(tk.Tk):
         except Exception:
             seed = 0
         self.model.reset(seed=seed)
-        self.status.set("Weights reset 💮")
+        self.status.set("Weights reset.")
         self._redraw()
