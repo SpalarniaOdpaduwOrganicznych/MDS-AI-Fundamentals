@@ -5,7 +5,6 @@ import numpy as np
 from utils import add_bias
 
 
-# ---------- activations ----------
 def heaviside(s: np.ndarray) -> np.ndarray:
     return (s >= 0).astype(float)
 
@@ -19,37 +18,23 @@ def tanh_act(s: np.ndarray) -> np.ndarray:
 def sin_act(s: np.ndarray) -> np.ndarray:
     return np.sin(s)
 
-
-# ---------- Grade 4 option: variable LR ----------
 @dataclass(frozen=True)
 class LRScheduleCosine:
     eta_min: float
     eta_max: float
 
-    def value(self, epoch: int, epochs_total: int) -> float:
-        # eta = eta_min + 0.5(eta_max-eta_min)(1+cos(pi*epoch/epochs_total))
-        if epochs_total <= 0:
+    def value(self, n: int, n_max: int) -> float:
+        if n_max <= 0:
             return float(self.eta_max)
-        e = max(0, min(epoch, epochs_total))
+
+        n = max(0, min(int(n), int(n_max)))
         return float(
             self.eta_min
-            + 0.5 * (self.eta_max - self.eta_min) * (1.0 + np.cos(np.pi * e / epochs_total))
+            + (self.eta_max - self.eta_min) * (1.0 + np.cos(np.pi * n / n_max))
         )
 
 
 class SingleNeuron:
-    """
-    Supports:
-      - heaviside, logistic(sigmoid), tanh, sin
-    Training:
-      Δw = η (d - y) f'(s) x,  s = w^T x
-      - heaviside: assume f'(s)=1 (assignment)
-      - logistic : f'(s)=beta*y*(1-y)
-      - tanh     : f'(s)=1-y^2
-      - sin      : f'(s)=cos(s)
-
-    Bias included via x=[x,y,1].
-    """
 
     def __init__(self, lr: float = 0.05, activation: str = "heaviside", beta: float = 2.0, seed: int = 0):
         self.lr = float(lr)
@@ -87,9 +72,6 @@ class SingleNeuron:
         raise ValueError("Unsupported activation (use heaviside/logistic/tanh/sin).")
 
     def predict_labels(self, X: np.ndarray) -> np.ndarray:
-        """
-        Convert activation output into class labels 0/1 for accuracy + decision boundary.
-        """
         s = self.score(X)
         a = self.activation
         if a == "heaviside":
@@ -114,18 +96,21 @@ class SingleNeuron:
         shuffle: bool = True,
         lr_schedule: LRScheduleCosine | None = None,
     ) -> list[float]:
-        """
-        Train with SGD. Optionally apply variable learning rate schedule (Grade 4 alternative).
-        """
         Xb = add_bias(X)
         d = d01.astype(float)
 
         rng = np.random.default_rng(1234)
         losses: list[float] = []
 
-        for ep in range(int(epochs)):
+        epochs = int(epochs)
+        if epochs <= 0:
+            return losses
+
+        n_max = max(1, epochs - 1)
+
+        for ep in range(epochs):
             if lr_schedule is not None:
-                self.lr = lr_schedule.value(ep, epochs)
+                self.lr = lr_schedule.value(ep, n_max)
 
             idx = np.arange(Xb.shape[0])
             if shuffle:
@@ -138,7 +123,7 @@ class SingleNeuron:
 
                 if a == "heaviside":
                     y = 1.0 if s >= 0 else 0.0
-                    fprime = 1.0  # per assignment
+                    fprime = 1.0
                 elif a in ("logistic", "sigmoid"):
                     y = float(sigmoid(np.array([s]), beta=self.beta)[0])
                     fprime = self.beta * y * (1.0 - y)
