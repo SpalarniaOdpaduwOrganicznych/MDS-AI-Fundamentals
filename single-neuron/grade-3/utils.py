@@ -3,7 +3,6 @@ import numpy as np
 
 
 def add_bias(X: np.ndarray) -> np.ndarray:
-    """Append bias column of ones: (N,2) -> (N,3)."""
     if X.ndim != 2:
         raise ValueError("X must be 2D array")
     return np.hstack([X, np.ones((X.shape[0], 1), dtype=X.dtype)])

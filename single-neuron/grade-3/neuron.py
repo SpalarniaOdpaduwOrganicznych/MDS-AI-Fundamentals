@@ -69,7 +69,7 @@ class SingleNeuron:
             return tanh_act(s)
         if a == "sin":
             return sin_act(s)
-        raise ValueError("Unsupported activation (use heaviside/logistic/tanh/sin).")
+        raise ValueError("Unsupported.")
 
     def predict_labels(self, X: np.ndarray) -> np.ndarray:
         s = self.score(X)
@@ -82,7 +82,7 @@ class SingleNeuron:
             return (tanh_act(s) >= 0.0).astype(float)
         if a == "sin":
             return (sin_act(s) >= 0.0).astype(float)
-        raise ValueError("Unsupported activation (use heaviside/logistic/tanh/sin).")
+        raise ValueError("Unsupported activation.")
 
     def accuracy(self, X: np.ndarray, d01: np.ndarray) -> float:
         pred = self.predict_labels(X)
@@ -134,7 +134,7 @@ class SingleNeuron:
                     y = float(np.sin(s))
                     fprime = float(np.cos(s))
                 else:
-                    raise ValueError("Unsupported activation for training.")
+                    raise ValueError("Unsupporte.")
 
                 self.w += self.lr * (d[i] - y) * fprime * x_i
 

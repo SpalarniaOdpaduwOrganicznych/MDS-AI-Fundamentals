@@ -11,11 +11,6 @@ def _sample_gaussian_modes(
     std_high: float,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """
-    Each mode uses:
-      mean ~ Uniform([mean_low, mean_high]) for x and y
-      std  ~ Uniform([std_low, std_high]) for x and y
-    """
     pts: list[np.ndarray] = []
     for _ in range(int(n_modes)):
         mu = rng.uniform(mean_low, mean_high, size=(2,))
@@ -38,11 +33,7 @@ def generate_two_class_data(
     std_high: float = 0.45,
     seed: int = 0,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Returns:
-      X: (N,2)
-      y: (N,) with labels 0/1
-    """
+
     if mean_high <= mean_low:
         raise ValueError("mean_high must be > mean_low")
     if std_low <= 0 or std_high <= std_low:

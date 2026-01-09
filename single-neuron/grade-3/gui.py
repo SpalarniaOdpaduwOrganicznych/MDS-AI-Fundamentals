@@ -15,7 +15,7 @@ from neuron import SingleNeuron, LRScheduleCosine
 from utils import as_int, as_float
 
 
-ACTIVATIONS = ["heaviside", "logistic", "tanh", "sin"]  # Grade 3 + Grade 4
+ACTIVATIONS = ["heaviside", "logistic", "tanh", "sin"]
 TRAINABLE = set(ACTIVATIONS)
 
 
@@ -31,11 +31,10 @@ class SingleNeuronGUI(tk.Tk):
         self.model = SingleNeuron(lr=0.05, activation="heaviside", beta=2.0, seed=0)
 
         self._apply_rose_theme()
-        self._build_plot()      # build plot first to avoid redraw issues
+        self._build_plot()
         self._build_controls()
         self._redraw()
 
-    # ---------------- Theme (rose/pink, no emoji) ----------------
     def _apply_rose_theme(self):
         self.rose_bg = "#fde7ee"       # very light rose
         self.rose_panel = "#f8c9d6"    # panel rose
@@ -66,7 +65,6 @@ class SingleNeuronGUI(tk.Tk):
         style.configure("Rose.TCombobox", fieldbackground=self.rose_white, foreground=self.rose_text)
         style.configure("Rose.TCheckbutton", background=self.rose_panel, foreground=self.rose_text)
 
-    # ---------------- UI ----------------
     def _build_controls(self):
         panel = ttk.Frame(self, padding=10, style="Panel.TFrame")
         panel.pack(side=tk.LEFT, fill=tk.Y)
@@ -114,7 +112,6 @@ class SingleNeuronGUI(tk.Tk):
 
         ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
 
-        # Grade 4 alternative: variable LR (cosine)
         self.var_use_sched = tk.BooleanVar(value=False)
         ttk.Checkbutton(panel, text="Variable LR (cosine) [Grade 4 alt]",
                         variable=self.var_use_sched, style="Rose.TCheckbutton").grid(
