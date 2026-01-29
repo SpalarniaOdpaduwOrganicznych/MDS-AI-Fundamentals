@@ -44,7 +44,7 @@ class SingleNeuron:
 
     def reset(self, seed: int = 0) -> None:
         rng = np.random.default_rng(seed)
-        self.w = rng.normal(0.0, 0.3, size=(3,))  # [w1, w2, b]
+        self.w = rng.normal(0.0, 0.3, size=(3,))
 
     def set_params(self, lr: float | None = None, activation: str | None = None, beta: float | None = None) -> None:
         if lr is not None:

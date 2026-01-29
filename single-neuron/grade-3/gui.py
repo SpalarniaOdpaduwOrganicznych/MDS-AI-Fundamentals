@@ -36,9 +36,9 @@ class SingleNeuronGUI(tk.Tk):
         self._redraw()
 
     def _apply_rose_theme(self):
-        self.rose_bg = "#fde7ee"       # very light rose
-        self.rose_panel = "#f8c9d6"    # panel rose
-        self.rose_accent = "#c2185b"   # deep rose accent
+        self.rose_bg = "#fde7ee"
+        self.rose_panel = "#f8c9d6"
+        self.rose_accent = "#c2185b"
         self.rose_text = "#3a1020"
         self.rose_white = "#ffffff"
         self.plot_bg = "#fff2f6"
@@ -96,7 +96,7 @@ class SingleNeuronGUI(tk.Tk):
 
         ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
 
-        lab("Neuron training + evaluation", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
+        lab("training", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
 
         lab("Activation:", r, 0)
         self.var_act = tk.StringVar(value="heaviside")
@@ -143,14 +143,13 @@ class SingleNeuronGUI(tk.Tk):
         self.fig.patch.set_facecolor(self.rose_bg)
         self.ax.set_facecolor(self.plot_bg)
 
-        self.ax.set_title("Samples + Decision Boundary")
+        self.ax.set_title("smples")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-    # ---------------- Plot helpers ----------------
     def _plot_limits(self):
         if self.X is None or self.X.size == 0:
             return (-2, 2, -2, 2)
@@ -201,7 +200,7 @@ class SingleNeuronGUI(tk.Tk):
     def _redraw(self):
         self.ax.clear()
         self.ax.set_facecolor(self.plot_bg)
-        self.ax.set_title("Samples + Decision Boundary")
+        self.ax.set_title("Samples")
         self.ax.set_xlabel("x")
         self.ax.set_ylabel("y")
 
@@ -216,7 +215,6 @@ class SingleNeuronGUI(tk.Tk):
         self.ax.grid(True, alpha=0.25)
         self.canvas.draw()
 
-    # ---------------- Callbacks ----------------
     def _on_activation_change(self):
         act = self.var_act.get().lower()
         try:
@@ -254,7 +252,7 @@ class SingleNeuronGUI(tk.Tk):
 
     def on_train(self):
         if self.X is None or self.y is None or self.X.size == 0:
-            messagebox.showinfo("No data", "Generate data first.")
+            messagebox.showinfo("No data", "Generate data")
             return
 
         try:
