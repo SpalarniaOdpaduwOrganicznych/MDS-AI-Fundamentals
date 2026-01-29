@@ -11,24 +11,24 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from data_gen import generate_two_class_data
-from neuron import SingleNeuron, LRScheduleCosine
+from mlp import MLP, LRScheduleCosine
+from mnist_loader import load_mnist_via_torch
 from utils import as_int, as_float
 
 
-ACTIVATIONS = ["heaviside", "logistic", "tanh", "sin"]
-TRAINABLE = set(ACTIVATIONS)
-
-
-class SingleNeuronGUI(tk.Tk):
+class MLP_GUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("ai del rey")
-        self.geometry("1100x680")
+        self.title("ai del rey - MLP")
+        self.geometry("1180x720")
 
+        # --- datasets ---
         self.X: np.ndarray | None = None
         self.y: np.ndarray | None = None
+        self.mode = tk.StringVar(value="toy")  # "toy" or "mnist"
 
-        self.model = SingleNeuron(lr=0.05, activation="heaviside", beta=2.0, seed=0)
+        # default model: 2D -> hidden -> 2 outputs
+        self.model = MLP(layer_sizes=[2, 16, 16, 2], lr=0.05, beta=2.0, seed=0)
 
         self._apply_rose_theme()
         self._build_plot()
@@ -58,12 +58,11 @@ class SingleNeuronGUI(tk.Tk):
 
         style.configure("Rose.TButton", background=self.rose_accent, foreground=self.rose_white,
                         padding=8, font=("Segoe UI", 10, "bold"))
-        style.map("Rose.TButton",
-                  background=[("active", "#d81b60"), ("pressed", "#ad1457")])
+        style.map("Rose.TButton", background=[("active", "#d81b60"), ("pressed", "#ad1457")])
 
         style.configure("Rose.TEntry", fieldbackground=self.rose_white, foreground=self.rose_text)
         style.configure("Rose.TCombobox", fieldbackground=self.rose_white, foreground=self.rose_text)
-        style.configure("Rose.TCheckbutton", background=self.rose_panel, foreground=self.rose_text)
+        style.configure("Rose.TRadiobutton", background=self.rose_panel, foreground=self.rose_text)
 
     def _build_controls(self):
         panel = ttk.Frame(self, padding=10, style="Panel.TFrame")
@@ -75,19 +74,24 @@ class SingleNeuronGUI(tk.Tk):
         def entry(row: int, label: str, default):
             lab(label, row, 0)
             var = tk.StringVar(value=str(default))
-            ttk.Entry(panel, textvariable=var, width=12, style="Rose.TEntry").grid(row=row, column=1, sticky="w", padx=6, pady=3)
+            ttk.Entry(panel, textvariable=var, width=14, style="Rose.TEntry").grid(row=row, column=1, sticky="w", padx=6, pady=3)
             return var
 
         r = 0
         lab("ai del rey", r, colspan=2, style="Header.TLabel", pady=(0, 10)); r += 1
 
-        lab("Data generation", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
+        lab("Dataset", r, colspan=2, style="Section.TLabel", pady=(0, 6)); r += 1
+        ttk.Radiobutton(panel, text="Toy (2D modes)", variable=self.mode, value="toy", style="Rose.TRadiobutton",
+                        command=self._on_mode_change).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
+        ttk.Radiobutton(panel, text="MNIST (flattened)", variable=self.mode, value="mnist", style="Rose.TRadiobutton",
+                        command=self._on_mode_change).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
+
+        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
+
+        lab("Toy data generation", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
         self.var_modes0 = entry(r, "Modes (class 0):", 2); r += 1
         self.var_modes1 = entry(r, "Modes (class 1):", 2); r += 1
         self.var_spm    = entry(r, "Samples per mode:", 80); r += 1
-
-        ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
-
         self.var_mean_lo = entry(r, "Mean min:", -1.0); r += 1
         self.var_mean_hi = entry(r, "Mean max:",  1.0); r += 1
         self.var_std_lo  = entry(r, "Std min:",  0.10); r += 1
@@ -96,60 +100,70 @@ class SingleNeuronGUI(tk.Tk):
 
         ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
 
-        lab("training", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
-
-        lab("Activation:", r, 0)
-        self.var_act = tk.StringVar(value="heaviside")
-        cb = ttk.Combobox(panel, textvariable=self.var_act, width=12, state="readonly",
-                          values=ACTIVATIONS, style="Rose.TCombobox")
-        cb.grid(row=r, column=1, sticky="w", padx=6, pady=3)
-        cb.bind("<<ComboboxSelected>>", lambda e: self._on_activation_change())
-        r += 1
-
-        self.var_lr     = entry(r, "Base LR η:", 0.05); r += 1
-        self.var_epochs = entry(r, "Epochs:", 30); r += 1
+        lab("Network", r, colspan=2, style="Section.TLabel", pady=(0, 8)); r += 1
+        self.var_arch   = entry(r, "Layer sizes:", "2,16,16,2"); r += 1
+        self.var_lr     = entry(r, "LR η:", 0.05); r += 1
+        self.var_epochs = entry(r, "Epochs:", 20); r += 1
         self.var_beta   = entry(r, "Sigmoid β:", 2.0); r += 1
+        self.var_bs     = entry(r, "Batch size:", 64); r += 1
 
         ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=8); r += 1
-
         self.var_use_sched = tk.BooleanVar(value=False)
-        ttk.Checkbutton(panel, text="Variable LR (cosine) [Grade 4 alt]",
-                        variable=self.var_use_sched, style="Rose.TCheckbutton").grid(
-            row=r, column=0, columnspan=2, sticky="w", pady=(0, 4)
-        )
-        r += 1
+        ttk.Checkbutton(panel, text="Variable LR (cosine)",
+                        variable=self.var_use_sched).grid(row=r, column=0, columnspan=2, sticky="w"); r += 1
         self.var_eta_min = entry(r, "η_min:", 0.005); r += 1
         self.var_eta_max = entry(r, "η_max:", 0.05); r += 1
 
         ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
 
-        ttk.Button(panel, text="Generate data", command=self.on_generate, style="Rose.TButton").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
-        ttk.Button(panel, text="Train neuron", command=self.on_train, style="Rose.TButton").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
-        ttk.Button(panel, text="Reset weights", command=self.on_reset_weights, style="Rose.TButton").grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
+        ttk.Button(panel, text="Load / Generate data", command=self.on_load_data, style="Rose.TButton")\
+            .grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
+        ttk.Button(panel, text="Train network", command=self.on_train, style="Rose.TButton")\
+            .grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
+        ttk.Button(panel, text="Reset weights", command=self.on_reset, style="Rose.TButton")\
+            .grid(row=r, column=0, columnspan=2, sticky="ew", pady=4); r += 1
 
         ttk.Separator(panel).grid(row=r, column=0, columnspan=2, sticky="ew", pady=10); r += 1
-        self.status = tk.StringVar(value="Generate data to begin.")
-        ttk.Label(panel, textvariable=self.status, style="Rose.TLabel", wraplength=280).grid(row=r, column=0, columnspan=2, sticky="w")
+        self.status = tk.StringVar(value="Choose dataset, then Load/Generate.")
+        ttk.Label(panel, textvariable=self.status, style="Rose.TLabel", wraplength=300)\
+            .grid(row=r, column=0, columnspan=2, sticky="w")
 
-        self._on_activation_change()
+        self._on_mode_change()
 
     def _build_plot(self):
         frame = ttk.Frame(self, padding=10)
         frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        self.fig = Figure(figsize=(7.8, 5.6), dpi=100)
+        self.fig = Figure(figsize=(8.2, 6.0), dpi=100)
         self.ax = self.fig.add_subplot(111)
-
         self.fig.patch.set_facecolor(self.rose_bg)
         self.ax.set_facecolor(self.plot_bg)
-
-        self.ax.set_title("smples")
-        self.ax.set_xlabel("x")
-        self.ax.set_ylabel("y")
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
+    def _parse_arch(self) -> list[int]:
+        raw = self.var_arch.get().strip()
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        sizes = [int(float(p)) for p in parts]
+
+        if len(sizes) < 3:
+            raise ValueError("Need ≥3 layers, e.g. 2,16,2 or 784,128,10")
+        if len(sizes) > 5:
+            raise ValueError("Max 5 layers total.")
+        return sizes
+
+    def _on_mode_change(self):
+        # set a sensible default architecture per mode
+        if self.mode.get() == "toy":
+            self.var_arch.set("2,16,16,2")
+            self.status.set("Toy mode: decision boundary will be shown.")
+        else:
+            self.var_arch.set("784,128,64,10")
+            self.status.set("MNIST mode: plot shows loss text only (no boundary).")
+        self._redraw()
+
+    # ---------- plotting ----------
     def _plot_limits(self):
         if self.X is None or self.X.size == 0:
             return (-2, 2, -2, 2)
@@ -160,6 +174,8 @@ class SingleNeuronGUI(tk.Tk):
         return (x_min - pad_x, x_max + pad_x, y_min - pad_y, y_max + pad_y)
 
     def _draw_background(self):
+        if self.mode.get() != "toy":
+            return
         if self.X is None or self.X.size == 0:
             return
         x0, x1, y0, y1 = self._plot_limits()
@@ -167,10 +183,13 @@ class SingleNeuronGUI(tk.Tk):
         ys = np.linspace(y0, y1, 260)
         XX, YY = np.meshgrid(xs, ys)
         grid = np.c_[XX.ravel(), YY.ravel()]
-        zz = self.model.predict_labels(grid).reshape(XX.shape)
-        self.ax.contourf(XX, YY, zz, levels=[-0.5, 0.5, 1.5], alpha=0.25)
+
+        pred = self.model.predict(grid).reshape(XX.shape)
+        self.ax.contourf(XX, YY, pred, levels=[-0.5, 0.5, 1.5], alpha=0.25)
 
     def _draw_points(self):
+        if self.mode.get() != "toy":
+            return
         if self.X is None or self.y is None or self.X.size == 0:
             return
         X0 = self.X[self.y == 0]
@@ -181,92 +200,91 @@ class SingleNeuronGUI(tk.Tk):
             self.ax.scatter(X1[:, 0], X1[:, 1], s=18, label="class 1")
         self.ax.legend(loc="upper right")
 
-    def _draw_boundary_line(self):
-        if self.X is None or self.X.size == 0:
-            return
-        w1, w2, b = self.model.w
-        x0, x1, y0, y1 = self._plot_limits()
-
-        if abs(w2) < 1e-9:
-            if abs(w1) < 1e-9:
-                return
-            x_line = -b / w1
-            self.ax.plot([x_line, x_line], [y0, y1], linewidth=2, zorder=5)
-        else:
-            xs = np.array([x0, x1])
-            ys = -(w1 * xs + b) / w2
-            self.ax.plot(xs, ys, linewidth=2, zorder=5)
-
     def _redraw(self):
         self.ax.clear()
         self.ax.set_facecolor(self.plot_bg)
-        self.ax.set_title("Samples")
-        self.ax.set_xlabel("x")
-        self.ax.set_ylabel("y")
 
-        if self.X is not None and self.X.size:
-            self._draw_background()
-            self._draw_points()
-            self._draw_boundary_line()
-            x0, x1, y0, y1 = self._plot_limits()
-            self.ax.set_xlim(x0, x1)
-            self.ax.set_ylim(y0, y1)
+        if self.mode.get() == "toy":
+            self.ax.set_title("Toy samples + decision boundary (MLP)")
+            self.ax.set_xlabel("x")
+            self.ax.set_ylabel("y")
 
-        self.ax.grid(True, alpha=0.25)
+            if self.X is not None and self.X.size:
+                self._draw_background()
+                self._draw_points()
+                x0, x1, y0, y1 = self._plot_limits()
+                self.ax.set_xlim(x0, x1)
+                self.ax.set_ylim(y0, y1)
+            self.ax.grid(True, alpha=0.25)
+        else:
+            self.ax.set_title("MNIST training (no boundary plot)")
+            self.ax.set_xlabel("")
+            self.ax.set_ylabel("")
+            self.ax.text(0.02, 0.92, self.status.get(), transform=self.ax.transAxes)
+
         self.canvas.draw()
 
-    def _on_activation_change(self):
-        act = self.var_act.get().lower()
+    # ---------- actions ----------
+    def on_load_data(self):
         try:
-            lr = as_float(self.var_lr.get(), "Base LR η")
-            beta = as_float(self.var_beta.get(), "Sigmoid β")
-            self.model.set_params(lr=lr, activation=act, beta=beta)
-        except Exception:
-            pass
-        self._redraw()
-
-    def on_generate(self):
-        try:
-            modes0 = as_int(self.var_modes0.get(), "Modes (class 0)", 0)
-            modes1 = as_int(self.var_modes1.get(), "Modes (class 1)", 0)
-            spm = as_int(self.var_spm.get(), "Samples per mode", 1)
-
-            mean_lo = as_float(self.var_mean_lo.get(), "Mean min")
-            mean_hi = as_float(self.var_mean_hi.get(), "Mean max")
-            std_lo = as_float(self.var_std_lo.get(), "Std min")
-            std_hi = as_float(self.var_std_hi.get(), "Std max")
             seed = as_int(self.var_seed.get(), "Random seed", 0)
+            arch = self._parse_arch()
+            lr = as_float(self.var_lr.get(), "LR η")
+            beta = as_float(self.var_beta.get(), "Sigmoid β")
 
-            self.X, self.y = generate_two_class_data(
-                modes0=modes0, modes1=modes1, samples_per_mode=spm,
-                mean_low=mean_lo, mean_high=mean_hi,
-                std_low=std_lo, std_high=std_hi,
-                seed=seed
-            )
+            if self.mode.get() == "toy":
+                modes0 = as_int(self.var_modes0.get(), "Modes (class 0)", 0)
+                modes1 = as_int(self.var_modes1.get(), "Modes (class 1)", 0)
+                spm = as_int(self.var_spm.get(), "Samples per mode", 1)
+                mean_lo = as_float(self.var_mean_lo.get(), "Mean min")
+                mean_hi = as_float(self.var_mean_hi.get(), "Mean max")
+                std_lo = as_float(self.var_std_lo.get(), "Std min")
+                std_hi = as_float(self.var_std_hi.get(), "Std max")
 
-            self.model.reset(seed=seed)
-            self.status.set(f"Generated {self.X.shape[0]} samples. Weights reset.")
+                self.X, y01 = generate_two_class_data(
+                    modes0=modes0, modes1=modes1, samples_per_mode=spm,
+                    mean_low=mean_lo, mean_high=mean_hi,
+                    std_low=std_lo, std_high=std_hi,
+                    seed=seed
+                )
+                self.y = y01.astype(int)
+
+                if arch[0] != 2 or arch[-1] != 2:
+                    raise ValueError("Toy mode needs arch starting with 2 and ending with 2, e.g. 2,16,2")
+
+                self.model = MLP(layer_sizes=arch, lr=lr, beta=beta, seed=seed)
+                self.status.set(f"Toy data: {self.X.shape[0]} samples. Model reset.")
+            else:
+                Xtr, ytr = load_mnist_via_torch(train=True)
+                self.X, self.y = Xtr, ytr
+
+                if arch[0] != 784 or arch[-1] != 10:
+                    raise ValueError("MNIST needs arch starting with 784 and ending with 10, e.g. 784,128,10")
+
+                self.model = MLP(layer_sizes=arch, lr=lr, beta=beta, seed=seed)
+                self.status.set(f"MNIST train loaded: {self.X.shape[0]} samples. Model reset.")
+
             self._redraw()
         except Exception as e:
-            messagebox.showerror("Generate error", str(e))
+            messagebox.showerror("Load/Generate error", str(e))
 
     def on_train(self):
         if self.X is None or self.y is None or self.X.size == 0:
-            messagebox.showinfo("No data", "Generate data")
+            messagebox.showinfo("No data", "Load/Generate data first.")
             return
 
         try:
-            act = self.var_act.get().lower()
-            lr = as_float(self.var_lr.get(), "Base LR η")
+            lr = as_float(self.var_lr.get(), "LR η")
             epochs = as_int(self.var_epochs.get(), "Epochs", 1)
             beta = as_float(self.var_beta.get(), "Sigmoid β")
+            bs = as_int(self.var_bs.get(), "Batch size", 1)
 
             if lr <= 0:
-                raise ValueError("Base LR η must be > 0")
+                raise ValueError("LR η must be > 0")
             if beta <= 0:
                 raise ValueError("Sigmoid β must be > 0")
 
-            self.model.set_params(lr=lr, activation=act, beta=beta)
+            self.model.set_params(lr=lr, beta=beta)
 
             sched = None
             if self.var_use_sched.get():
@@ -276,20 +294,21 @@ class SingleNeuronGUI(tk.Tk):
                     raise ValueError("Need 0 < η_min ≤ η_max")
                 sched = LRScheduleCosine(eta_min=eta_min, eta_max=eta_max)
 
-            losses = self.model.train_sgd(self.X, self.y, epochs=epochs, shuffle=True, lr_schedule=sched)
+            losses = self.model.train_minibatch(
+                self.X, self.y,
+                epochs=epochs,
+                batch_size=bs,
+                shuffle=True,
+                lr_schedule=sched
+            )
             acc = self.model.accuracy(self.X, self.y)
-
-            sched_txt = " + variable LR" if sched is not None else ""
-            self.status.set(f"Trained {epochs} epochs ({act}{sched_txt}). MSE={losses[-1]:.4f}, Acc={acc*100:.2f}%")
-            print(f"Final weights: {self.model.w}")
-            print(f"Accuracy: {acc*100:.2f}%")
-
+            self.status.set(f"Trained {epochs} epochs | CE={losses[-1]:.4f} | Acc={acc*100:.2f}%")
             self._redraw()
 
         except Exception as e:
             messagebox.showerror("Train error", str(e))
 
-    def on_reset_weights(self):
+    def on_reset(self):
         try:
             seed = as_int(self.var_seed.get(), "Random seed", 0)
         except Exception:

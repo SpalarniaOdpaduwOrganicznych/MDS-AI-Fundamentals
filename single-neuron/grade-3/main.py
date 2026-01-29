@@ -1,4 +1,4 @@
-from gui import SingleNeuronGUI
+from gui import MLP_GUI
 
 if __name__ == "__main__":
-    SingleNeuronGUI().mainloop()
+    MLP_GUI().mainloop()
